@@ -1,23 +1,23 @@
-import logo from './logo.svg';
-import './App.css';
+import { useState } from "react";
+import Navbar from "./common/Navbar";
+
+import Dashboard from "./component/Dashboard";
+import MedicalReportUpload from "./component/ReportUpload";
+import ClinicalTrials from "./component/Clinictrialmatch";
 
 function App() {
+  const [activePage, setActivePage] = useState("dashboard");
+
+  const renderPage = () => {
+    if (activePage === "dashboard") return <Dashboard />;
+    if (activePage === "upload") return <MedicalReportUpload />;
+    if (activePage === "matches") return <ClinicalTrials />;
+  };
+
   return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Compile and Cry
-        </a>
-      </header>
+    <div>
+      <Navbar activePage={activePage} onNavigate={setActivePage} />
+      {renderPage()}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-# COHERENCE-26 — Clinical Trial Matching Pipeline
+# COHERENCE-26 — Nextrial
 
 > **Compile and Cry** | Automated patient-to-trial eligibility matching using OCR, biomedical NER, XGBoost, and SHAP explanations.
 

@@ -1,9 +1,9 @@
 import { useState } from "react";
 import Navbar from "./common/Navbar";
-
+import { TrialDataProvider } from "./context/TrialDataContext";
 import Dashboard from "./component/Dashboard";
 import MedicalReportUpload from "./component/ReportUpload";
-import ClinicalTrials from "./component/Clinictrialmatch";
+import ClinicalTrials from "./component/AboutUs";
 
 function App() {
   const [activePage, setActivePage] = useState("dashboard");
@@ -15,10 +15,12 @@ function App() {
   };
 
   return (
-    <div>
-      <Navbar activePage={activePage} onNavigate={setActivePage} />
-      {renderPage()}
-    </div>
+    <TrialDataProvider>
+      <div>
+        <Navbar activePage={activePage} onNavigate={setActivePage} />
+        {renderPage()}
+      </div>
+    </TrialDataProvider>
   );
 }
 

@@ -4,7 +4,7 @@ import "./Navbar.css";
 const NAV_ITEMS = [
   { id: "dashboard",  label: "Dashboard",     icon: "⊞" },
   { id: "upload",     label: "Upload Report",  icon: "↑" },
-  { id: "matches",    label: "Clinical Trials", icon: "◎" },
+  { id: "matches",    label: "About Us", icon: "◎" },
 ];
 
 export default function Navbar({ activePage = "dashboard", onNavigate }) {

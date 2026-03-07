@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import "./ReportUpload.css";
 import ClinicalTrialMap from "./ClinicalTrialMap";
+import { useTrialData } from "../context/TrialDataContext";
 /* ═══════════════════════════════════════════════════
    DNA HELIX — Three.js, free-floating, right-shifted
 ═══════════════════════════════════════════════════ */
@@ -30,15 +31,15 @@ function DNAHelix({ phase }) {
       camera.position.set(1.2, 0, 9.5);
       camera.lookAt(1.2, 0, 0);
 
-      const C = {
-        strandA:  new THREE.Color(0x38bdf8),
-        strandB:  new THREE.Color(0x818cf8),
-        pair:     new THREE.Color(0x1e40af),
-        nodeA:    new THREE.Color(0x7dd3fc),
-        nodeB:    new THREE.Color(0xa78bfa),
-        glow:     new THREE.Color(0x2563eb),
-        dataFlow: new THREE.Color(0x00f0ff),
-        bokeh:    new THREE.Color(0x60a5fa),
+const C = {
+        strandA:  new THREE.Color(0x8569E4),   // medium slate blue
+        strandB:  new THREE.Color(0xA68CEE),   // tropical indigo
+        pair:     new THREE.Color(0x510993),   // indigo deep
+        nodeA:    new THREE.Color(0xC7AFF7),   // mauve
+        nodeB:    new THREE.Color(0x6B39BC),   // grape
+        glow:     new THREE.Color(0x7c3aed),   // violet glow
+        dataFlow: new THREE.Color(0xd8b4fe),   // light purple flow
+        bokeh:    new THREE.Color(0xA68CEE),   // tropical indigo
       };
 
       const root = new THREE.Group();
@@ -201,21 +202,50 @@ export default function ReportUpload() {
   const [progress, setProgress]     = useState(0);
   const inputRef = useRef(null);
 
-  const runExtraction = async (f) => {
-    setFile(f); setPhase("processing");
-    setStepsDone([]); setActiveStep(0); setProgress(0);
-    const total = DURATIONS.reduce((a,b) => a + b, 0);
-    let elapsed = 0;
-    for (let i = 0; i < STEPS.length; i++) {
-      setActiveStep(i);
-      await new Promise(r => setTimeout(r, DURATIONS[i]));
-      setStepsDone(prev => [...prev, i]);
-      elapsed += DURATIONS[i];
-      setProgress(Math.round((elapsed / total) * 100));
-    }
-    await new Promise(r => setTimeout(r, 280));
-    setPhase("done");
-  };
+const FASTAPI_URL = "http://192.168.137.226:8000/upload-report"; // ← set your IP here
+const { fetchDashboardData, trialData } = useTrialData();
+const metrics = trialData?.metricsData ?? { conditions: 0, labValues: 0, trialsMatched: 0 };
+const runExtraction = async (f) => {
+  setFile(f);
+  setPhase("processing");
+  setStepsDone([]);
+  setActiveStep(0);
+  setProgress(0);
+
+  // ── Upload to FastAPI ──────────────────────────────
+  const formData = new FormData();
+  formData.append("file", f);
+
+  let apiResult = null;
+  const uploadPromise = fetch(FASTAPI_URL, {
+    method: "POST",
+    body: formData,
+  })
+    .then((res) => res.json())
+    .then((data) => { apiResult = data; })
+    .catch((err) => console.error("Upload failed:", err));
+
+  // ── Run UI steps in parallel ───────────────────────
+  const total = DURATIONS.reduce((a, b) => a + b, 0);
+  let elapsed = 0;
+
+  for (let i = 0; i < STEPS.length; i++) {
+    setActiveStep(i);
+    await new Promise((r) => setTimeout(r, DURATIONS[i]));
+    setStepsDone((prev) => [...prev, i]);
+    elapsed += DURATIONS[i];
+    setProgress(Math.round((elapsed / total) * 100));
+  }
+
+  // ── Wait for API if still running ─────────────────
+  await uploadPromise;
+
+  // ── Use real results if available ─────────────────
+await fetchDashboardData();
+
+  await new Promise((r) => setTimeout(r, 280));
+  setPhase("done");
+};
 
   const handleFile = (f) => { if (f?.type === "application/pdf") runExtraction(f); };
   const reset = () => {
@@ -229,6 +259,9 @@ export default function ReportUpload() {
       <div className="ru-bg-deep"  aria-hidden />
       <div className="ru-bg-glow"  aria-hidden />
       <div className="ru-bg-noise" aria-hidden />
+      <div className="ru-bg-ecg-1" aria-hidden />   {/* ← ADD */}
+      <div className="ru-bg-ecg-2" aria-hidden />   {/* ← ADD */}
+      <div className="ru-bg-ecg-3" aria-hidden />   {/* ← ADD */}
 
       {/* ══ HERO SECTION ══ */}
       <main className="ru-main">
@@ -277,14 +310,14 @@ export default function ReportUpload() {
                 <span className="ru-dz-btn">Browse file</span>
               </div>
 
-              <div className="ru-stats">
+              {/* <div className="ru-stats">
                 {[{n:"2,400+",l:"Active Trials"},{n:"98%",l:"Match Accuracy"},{n:"<8s",l:"Analysis Time"}].map(s => (
                   <div key={s.l} className="ru-stat">
                     <span className="ru-stat-n">{s.n}</span>
                     <span className="ru-stat-l">{s.l}</span>
                   </div>
                 ))}
-              </div>
+              </div> */}
             </div>
           )}
 
@@ -335,7 +368,7 @@ export default function ReportUpload() {
               <h2 className="ru-done-title">Analysis Complete</h2>
               <p className="ru-done-sub">Your report has been processed and matched against active trials in your region.</p>
               <div className="ru-metrics">
-                {[["3","Conditions"],["6","Lab Values"],["12","Trials Matched"]].map(([n,l]) => (
+                {[[metrics.conditions,"Conditions"],[metrics.labValues,"Lab Values"],[metrics.trialsMatched,"Trials Matched"]].map(([n,l]) => (
                   <div key={l} className="ru-metric"><span className="ru-metric-n">{n}</span><span className="ru-metric-l">{l}</span></div>
                 ))}
               </div>
@@ -344,7 +377,7 @@ export default function ReportUpload() {
                 <svg viewBox="0 0 14 14" fill="currentColor" width="12" className="ru-arr"><path d="M7.293 1.293a1 1 0 011.414 0l5 5a1 1 0 010 1.414l-5 5a1 1 0 01-1.414-1.414L10.586 8H1a1 1 0 110-2h9.586L7.293 2.707a1 1 0 010-1.414z"/></svg>
               </button>
               <button className="ru-again" onClick={reset}>↺ Upload another report</button>
-              <p className="ru-privacy">🛡 All data processed locally · No PHI retained · HIPAA & DPDP compliant</p>
+              <p className="ru-privacy">🛡 All data processed locally · No PHI retained · HIPAA compliant</p>
             </div>
           )}
         </section>

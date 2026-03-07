@@ -1,6 +1,5 @@
 // ClinicalTrialMap.jsx — Uses geoPoint lat/lon directly from ClinicalTrials.gov API v2
 // No geocoding, no hardcoded coords — every pin is exact hospital-level location
-// Google Maps needs VITE_GOOGLE_MAPS_API_KEY in .env
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { GoogleMap, useJsApiLoader, Marker, InfoWindow, Circle } from "@react-google-maps/api";
@@ -8,21 +7,30 @@ import "./ClinicalTrialMap.css";
 
 /* ─── Config ──────────────────────────────────────────── */
 const GMAPS_API_KEY    = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+const LIBRARIES        = ["places"];
 const NEARBY_RADIUS_KM = 50;
 const INDIA_CENTER     = { lat: 22.9734, lng: 78.6569 };
 const INDIA_ZOOM       = 5;
-const LIBRARIES        = ["places"];
 
 /* ─── ClinicalTrials.gov v2 ───────────────────────────── */
 const CT_API_BASE = "https://clinicaltrials.gov/api/v2/studies";
+
+// IMPORTANT: CT.gov API v2 uses module-level field names, NOT legacy flat names.
+// "LocationContactEMail" etc. are legacy v1 names — they DON'T work in v2 fields filter.
+// We request the whole contactsLocationsModule so contacts[].email comes back intact.
 const CT_FIELDS = [
   "NCTId", "BriefTitle", "OverallStatus", "Phase", "Condition",
   "StartDate", "LeadSponsorName", "BriefSummary",
   "LocationFacility", "LocationCity", "LocationState", "LocationCountry",
-  "LocationGeoPoint",   // ← exact lat/lon per location, direct from API
+  "LocationGeoPoint",
+  // These two module-level keys ensure the full contacts array is returned
   "LocationContactName", "LocationContactPhone", "LocationContactEMail",
   "CentralContactName", "CentralContactPhone", "CentralContactEMail",
 ].join(",");
+
+// We do NOT pass `fields` in the fetch — requesting specific fields in v2 strips
+// the nested contacts sub-arrays. Fetching without a fields filter returns the
+// full protocolSection including contactsLocationsModule with all contact emails.
 
 /* ─── Phase colours ───────────────────────────────────── */
 const PHASE_COLOR = {
@@ -38,22 +46,22 @@ const ALL_PHASES = ["All Phases", "Phase I", "Phase I/II", "Phase II", "Phase II
 
 /* ─── Google Maps dark style ──────────────────────────── */
 const MAP_STYLES = [
-  { elementType: "geometry",                stylers: [{ color: "#04090f" }] },
-  { elementType: "labels.text.fill",        stylers: [{ color: "#4e6e88" }] },
-  { elementType: "labels.text.stroke",      stylers: [{ color: "#020c18" }] },
-  { featureType: "administrative",          elementType: "geometry",         stylers: [{ color: "#0c1523" }] },
-  { featureType: "administrative.country",  elementType: "labels.text.fill", stylers: [{ color: "#5a8aaa" }] },
-  { featureType: "administrative.locality", elementType: "labels.text.fill", stylers: [{ color: "#5a8aaa" }] },
-  { featureType: "poi",                     elementType: "labels.text.fill", stylers: [{ color: "#4e6e88" }] },
-  { featureType: "poi.park",                elementType: "geometry",         stylers: [{ color: "#080f1c" }] },
-  { featureType: "road",                    elementType: "geometry",         stylers: [{ color: "#0c1523" }] },
-  { featureType: "road",                    elementType: "geometry.stroke",  stylers: [{ color: "#060d1a" }] },
-  { featureType: "road",                    elementType: "labels.text.fill", stylers: [{ color: "#3a5a72" }] },
-  { featureType: "road.highway",            elementType: "geometry",         stylers: [{ color: "#0e1f36" }] },
-  { featureType: "road.highway",            elementType: "labels.text.fill", stylers: [{ color: "#4a7a99" }] },
-  { featureType: "transit",                 elementType: "geometry",         stylers: [{ color: "#080f1c" }] },
-  { featureType: "water",                   elementType: "geometry",         stylers: [{ color: "#020c18" }] },
-  { featureType: "water",                   elementType: "labels.text.fill", stylers: [{ color: "#1a3a55" }] },
+  { elementType: "geometry",                stylers: [{ color: "#06000f" }] },
+  { elementType: "labels.text.fill",        stylers: [{ color: "#4a3468" }] },
+  { elementType: "labels.text.stroke",      stylers: [{ color: "#03000a" }] },
+  { featureType: "administrative",          elementType: "geometry",         stylers: [{ color: "#0e0224" }] },
+  { featureType: "administrative.country",  elementType: "labels.text.fill", stylers: [{ color: "#6b4f94" }] },
+  { featureType: "administrative.locality", elementType: "labels.text.fill", stylers: [{ color: "#6b4f94" }] },
+  { featureType: "poi",                     elementType: "labels.text.fill", stylers: [{ color: "#4a3468" }] },
+  { featureType: "poi.park",                elementType: "geometry",         stylers: [{ color: "#080014" }] },
+  { featureType: "road",                    elementType: "geometry",         stylers: [{ color: "#12022e" }] },
+  { featureType: "road",                    elementType: "geometry.stroke",  stylers: [{ color: "#08001a" }] },
+  { featureType: "road",                    elementType: "labels.text.fill", stylers: [{ color: "#3d2260" }] },
+  { featureType: "road.highway",            elementType: "geometry",         stylers: [{ color: "#1a0535" }] },
+  { featureType: "road.highway",            elementType: "labels.text.fill", stylers: [{ color: "#6b39bc" }] },
+  { featureType: "transit",                 elementType: "geometry",         stylers: [{ color: "#080014" }] },
+  { featureType: "water",                   elementType: "geometry",         stylers: [{ color: "#03000a" }] },
+  { featureType: "water",                   elementType: "labels.text.fill", stylers: [{ color: "#2d0a5e" }] },
 ];
 
 /* ─── Marker icons ────────────────────────────────────── */
@@ -72,8 +80,8 @@ function markerIcon(color = "#0ea5e9", size = 34) {
 
 function patientIcon() {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="42" height="42" viewBox="0 0 42 42">
-    <circle cx="21" cy="21" r="19" fill="#0ea5e9" fill-opacity="0.12" stroke="#0ea5e9" stroke-width="1.4"/>
-    <circle cx="21" cy="21" r="10" fill="#0ea5e9"/>
+    <circle cx="21" cy="21" r="19" fill="#8569E4" fill-opacity="0.14" stroke="#A68CEE" stroke-width="1.4"/>
+    <circle cx="21" cy="21" r="10" fill="#8569E4"/>
     <circle cx="21" cy="21" r="5" fill="white"/>
   </svg>`;
   return {
@@ -109,34 +117,31 @@ function parseStudy(study) {
   );
   if (!locations.length) return null;
 
-  // Prefer a location that has geoPoint coordinates
   const primary = locations.find(l => l.geoPoint?.lat && l.geoPoint?.lon) || locations[0];
-
-  // ── Read lat/lon directly from the API response — no geocoding needed ──
   const lat = primary.geoPoint?.lat ?? null;
   const lon = primary.geoPoint?.lon ?? null;
-
-  // Drop trials with no coordinates at all
   if (lat === null || lon === null) return null;
 
   const city  = primary.city  || "Unknown";
   const state = primary.state || "Unknown";
 
   const centralContact = (lo?.centralContacts || [])[0] || {};
+
+  // Search ALL India locations for a contact with an email (not just the primary one)
+  const allLocationContacts = locations.flatMap(l => l.contacts || []);
+  const locationContactWithEmail = allLocationContacts.find(c => c.email) || allLocationContacts[0] || {};
+
   const contact = {
-    name:  primary.contacts?.[0]?.name  || centralContact.name  || "Study Team",
-    email: primary.contacts?.[0]?.email || centralContact.email || "",
-    phone: primary.contacts?.[0]?.phone || centralContact.phone || "",
+    name:  centralContact.name  || locationContactWithEmail.name  || "Study Team",
+    email: centralContact.email || locationContactWithEmail.email || "",
+    phone: centralContact.phone || locationContactWithEmail.phone || "",
   };
 
   return {
     id:          id?.nctId || "",
     title:       id?.briefTitle || "Untitled Study",
     institution: primary.facility || "Unknown Institution",
-    city, state,
-    lat,
-    lng: lon,
-    phase, contact,
+    city, state, lat, lng: lon, phase, contact,
     status:      st?.overallStatus === "RECRUITING" ? "Recruiting" : (st?.overallStatus || ""),
     condition:   co?.conditions?.[0] || "Unknown",
     startDate:   st?.startDateStruct?.date || "",
@@ -160,7 +165,12 @@ function ContactModal({ trial, onClose }) {
   const [sending, setSending] = useState(false);
   const [error,   setError]   = useState("");
 
-  const handleSubmit = async () => {
+  // trial.contact is already populated from parseStudy → CT.gov API
+  const toEmail      = trial?.contact?.email || "";
+  const toName       = trial?.contact?.name  || "Research Team";
+  const toPhone      = trial?.contact?.phone || "";
+
+  const handleSubmit = () => {
     if (!name.trim() || !email.trim() || !message.trim()) {
       setError("Please fill in name, email and message."); return;
     }
@@ -168,29 +178,48 @@ function ContactModal({ trial, onClose }) {
       setError("Please enter a valid email address."); return;
     }
     setError(""); setSending(true);
-    const subject = encodeURIComponent(`Clinical Trial Inquiry — ${trial.id}: ${trial.title}`);
+
+    const subject = encodeURIComponent(
+      `Clinical Trial Inquiry — ${trial.id}: ${trial.title}`
+    );
     const body = encodeURIComponent(
-`Dear ${trial.contact.name},
+`Dear ${toName},
 
 I am writing to express interest in your clinical trial:
-Trial: ${trial.title}
-Trial ID: ${trial.id}
-Institution: ${trial.institution}
 
-Patient Name: ${name}
-Patient Email: ${email}
-${phone ? `Patient Phone: ${phone}\n` : ""}
-Message:
+Trial Title  : ${trial.title}
+Trial ID     : ${trial.id}
+Institution  : ${trial.institution}
+
+---------------------------------
+Patient Details
+---------------------------------
+Name    : ${name}
+Email   : ${email}${phone ? `\nPhone   : ${phone}` : ""}
+
+---------------------------------
+Message
+---------------------------------
 ${message}
 
 I would appreciate information about eligibility and enrollment.
 
 Regards,
-${name}`
+${name}
+${email}`
     );
-    await new Promise(r => setTimeout(r, 800));
-    window.location.href = `mailto:${trial.contact.email}?subject=${subject}&body=${body}`;
-    setSending(false); setSent(true);
+
+    // Hidden anchor click — only reliable cross-browser way to open mailto:
+    // without navigating away from the React app
+    const a = document.createElement("a");
+    a.href  = `mailto:${toEmail}?subject=${subject}&body=${body}`;
+    a.style.display = "none";
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => document.body.removeChild(a), 200);
+
+    setSending(false);
+    setSent(true);
   };
 
   return (
@@ -208,27 +237,35 @@ ${name}`
             </svg>
           </button>
         </div>
+
         {sent ? (
           <div className="ctmap-modal-success">
             <svg viewBox="0 0 48 48" fill="none" width="48">
               <circle cx="24" cy="24" r="22" stroke="#10b981" strokeWidth="1.5"/>
               <path d="M14 24l7 7 13-14" stroke="#10b981" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
-            <h4>Message sent!</h4>
-            <p>Your mail client opened pre-filled for <strong>{trial.contact.name}</strong>.</p>
-            <p className="ctmap-modal-success-note">
-              Or email: <a href={`mailto:${trial.contact.email}`}>{trial.contact.email}</a>
+            <h4>Mail client opened!</h4>
+            <p>Your email app should open with the message pre-filled for <strong>{toName}</strong>.</p>
+            {toEmail && (
+              <p className="ctmap-modal-success-note">
+                To: <a href={`mailto:${toEmail}`}>{toEmail}</a>
+              </p>
+            )}
+            <p className="ctmap-modal-success-note" style={{ opacity: 0.5 }}>
+              If nothing opened, copy the email above and send manually.
             </p>
             <button className="ctmap-modal-btn" onClick={onClose}>Done</button>
           </div>
         ) : (
           <>
             <div className="ctmap-modal-researcher">
-              <div className="ctmap-modal-r-avatar">{trial.contact.name.charAt(0)}</div>
+              <div className="ctmap-modal-r-avatar">{toName.charAt(0)}</div>
               <div>
-                <div className="ctmap-modal-r-name">{trial.contact.name}</div>
-                <div className="ctmap-modal-r-email">{trial.contact.email || "Contact via NCT ID"}</div>
-                {trial.contact.phone && <div className="ctmap-modal-r-phone">{trial.contact.phone}</div>}
+                <div className="ctmap-modal-r-name">{toName}</div>
+                <div className="ctmap-modal-r-email" style={{ color: toEmail ? '#0ea5e9' : 'rgba(255,255,255,0.3)' }}>
+                  {toEmail || "⚠ Email not listed on ClinicalTrials.gov"}
+                </div>
+                {toPhone && <div className="ctmap-modal-r-phone">{toPhone}</div>}
               </div>
             </div>
             <div className="ctmap-modal-pills">
@@ -244,7 +281,7 @@ ${name}`
                   <input type="text" placeholder="Full name" value={name} onChange={e => setName(e.target.value)}/>
                 </div>
                 <div className="ctmap-modal-field">
-                  <label>Email <span>*</span></label>
+                  <label>Your Email <span>*</span></label>
                   <input type="email" placeholder="you@email.com" value={email} onChange={e => setEmail(e.target.value)}/>
                 </div>
               </div>
@@ -261,11 +298,14 @@ ${name}`
               <div className="ctmap-modal-actions">
                 <button className="ctmap-modal-btn-secondary" onClick={onClose}>Cancel</button>
                 <button className="ctmap-modal-btn" onClick={handleSubmit} disabled={sending}>
-                  {sending ? <><span className="ctmap-spin ctmap-spin-sm"/>Sending…</> : "Send Message →"}
+                  {sending
+                    ? <><span className="ctmap-spin ctmap-spin-sm"/>Opening…</>
+                    : "📧 Send Message →"}
                 </button>
               </div>
               <p className="ctmap-modal-note">
-                This will open your mail client pre-filled. Your info is shared only with {trial.institution}.
+                Opens your mail app pre-filled.
+                {toEmail ? ` Sending to: ${toEmail}` : " Add recipient email manually in your mail app."}
               </p>
             </div>
           </>
@@ -315,63 +355,53 @@ export default function ClinicalTrialMap({ patientConditions = [] }) {
   const mapRef    = useRef(null);
   const listTopRef = useRef(null);
 
+  // Same id + options as Dashboard.jsx — prevents duplicate loader error
   const { isLoaded, loadError } = useJsApiLoader({
+    id: 'google-map-script',
     googleMapsApiKey: GMAPS_API_KEY,
     libraries: LIBRARIES,
   });
 
-  /* ══════════════════════════════════════════════════
-     FETCH — lat/lon read directly from geoPoint field.
-     Trials appear on map page-by-page as they load.
-     Zero geocoding. Zero hardcoded coordinates.
-  ══════════════════════════════════════════════════ */
   useEffect(() => {
     let cancelled = false;
-
     const run = async () => {
       setFetchPhase("fetching");
       setTrials([]);
-
       try {
         let pageToken = null;
         let page      = 0;
         const MAX_PAGES = 10;
-
         do {
           const params = new URLSearchParams({
             "query.locn":           "India",
             "filter.overallStatus": "RECRUITING",
             "pageSize":             "100",
             "format":               "json",
-            "fields":               CT_FIELDS,
+            // NOTE: No "fields" filter here — passing legacy flat field names like
+            // "LocationContactEMail" in v2 strips the nested contacts[] sub-arrays,
+            // causing email to always come back empty. Without a fields filter,
+            // the full protocolSection is returned including all contact emails.
           });
           if (pageToken) params.set("pageToken", pageToken);
-
           const res = await fetch(`${CT_API_BASE}?${params}`);
           if (!res.ok) throw new Error(`API error ${res.status}`);
           const json = await res.json();
-
-          // Parse and append each page immediately — progressive rendering
           const pageParsed = (json.studies || []).map(parseStudy).filter(Boolean);
           if (cancelled) return;
           setTrials(prev => [...prev, ...pageParsed]);
-
           pageToken = json.nextPageToken || null;
           page++;
           if (cancelled) return;
         } while (pageToken && page < MAX_PAGES);
-
         if (!cancelled) setFetchPhase("done");
       } catch (err) {
         if (!cancelled) { setFetchError(err.message); setFetchPhase("error"); }
       }
     };
-
     run();
     return () => { cancelled = true; };
   }, []);
 
-  /* ── Geolocation ── */
   const requestLocation = useCallback(() => {
     if (!navigator.geolocation) { setLocationError("Geolocation not supported."); return; }
     setLocating(true); setLocationError(null);
@@ -384,7 +414,6 @@ export default function ClinicalTrialMap({ patientConditions = [] }) {
 
   useEffect(() => { requestLocation(); }, [requestLocation]);
 
-  /* ── State/city filter lists — built from live data, not hardcoded ── */
   const stateList = useMemo(() => {
     const states = [...new Set(trials.map(t => t.state).filter(s => s && s !== "Unknown"))].sort();
     return ["All India", ...states];
@@ -396,10 +425,8 @@ export default function ClinicalTrialMap({ patientConditions = [] }) {
     return ["All Cities", ...cities];
   }, [trials, filterState]);
 
-  /* ── Filtered trials ── */
   const filteredTrials = useMemo(() => {
     let list = trials;
-
     if (view === "nearby" && userLocation) {
       list = list.filter(t => {
         const R    = 6371;
@@ -413,7 +440,6 @@ export default function ClinicalTrialMap({ patientConditions = [] }) {
       });
       if (list.length === 0) list = trials;
     }
-
     if (filterState !== "All India")  list = list.filter(t => t.state === filterState);
     if (filterCity  !== "All Cities") list = list.filter(t => t.city  === filterCity);
     if (filterPhase !== "All Phases") list = list.filter(t => t.phase === filterPhase);
@@ -450,7 +476,6 @@ export default function ClinicalTrialMap({ patientConditions = [] }) {
   const focusTrial   = t => { setSelectedTrial(t); mapRef.current?.panTo({ lat: t.lat, lng: t.lng }); mapRef.current?.setZoom(15); };
   const resetFilters = () => { setFilterState("All India"); setFilterCity("All Cities"); setFilterPhase("All Phases"); setFilterCondition(""); setListSearch(""); setCurrentPage(1); };
 
-  // Reset to page 1 whenever filters/search change
   const handleFilterState = v  => { setFilterState(v);     setFilterCity("All Cities"); setCurrentPage(1); };
   const handleFilterCity  = v  => { setFilterCity(v);      setCurrentPage(1); };
   const handleFilterPhase = v  => { setFilterPhase(v);     setCurrentPage(1); };
@@ -494,8 +519,6 @@ export default function ClinicalTrialMap({ patientConditions = [] }) {
       {contactTrial && <ContactModal trial={contactTrial} onClose={() => setContactTrial(null)} />}
 
       <div className="ctmap-wrap">
-
-        {/* Header */}
         <div className="ctmap-section-header">
           <div className="ctmap-section-left">
             <div className="ctmap-title-row">
@@ -524,7 +547,6 @@ export default function ClinicalTrialMap({ patientConditions = [] }) {
         {renderBanner()}
         {locationError && <div className="ctmap-alert">{locationError}</div>}
 
-        {/* Filters */}
         <div className="ctmap-filters">
           <div className="ctmap-filter-group">
             <label>State</label>
@@ -563,7 +585,6 @@ export default function ClinicalTrialMap({ patientConditions = [] }) {
           )}
         </div>
 
-        {/* Map */}
         <div className="ctmap-map-container">
           {!isLoaded ? (
             <div className="ctmap-skeleton">
@@ -582,7 +603,7 @@ export default function ClinicalTrialMap({ patientConditions = [] }) {
                 <>
                   <Marker position={userLocation} icon={patientIcon()} title="Your location" zIndex={200}/>
                   <Circle center={userLocation} radius={NEARBY_RADIUS_KM * 1000}
-                    options={{ fillColor: "#0ea5e9", fillOpacity: 0.04, strokeColor: "#0ea5e9", strokeOpacity: 0.18, strokeWeight: 1 }}
+                    options={{ fillColor: "#8569E4", fillOpacity: 0.05, strokeColor: "#A68CEE", strokeOpacity: 0.2, strokeWeight: 1 }}
                   />
                 </>
               )}
@@ -621,7 +642,7 @@ export default function ClinicalTrialMap({ patientConditions = [] }) {
                     <div className="ctmap-iw-row">
                       <span className="ctmap-iw-label">Trial ID</span>
                       <a href={`https://clinicaltrials.gov/study/${selectedTrial.id}`} target="_blank" rel="noreferrer"
-                        style={{ fontFamily: "monospace", fontSize: "11px", color: "#0ea5e9" }}>
+                        style={{ fontFamily: "monospace", fontSize: "11px", color: "#A68CEE" }}>
                         {selectedTrial.id} ↗
                       </a>
                     </div>
@@ -635,7 +656,6 @@ export default function ClinicalTrialMap({ patientConditions = [] }) {
           )}
         </div>
 
-        {/* Phase legend */}
         <div className="ctmap-legend">
           {Object.entries(PHASE_COLOR).map(([phase, color]) => (
             <button key={phase}
@@ -649,7 +669,6 @@ export default function ClinicalTrialMap({ patientConditions = [] }) {
           ))}
         </div>
 
-        {/* Trial list */}
         <div className="ctmap-list-header" ref={listTopRef}>
           <span className="ctmap-list-count">
             {filteredTrials.length} trial{filteredTrials.length !== 1 ? "s" : ""}
@@ -726,15 +745,12 @@ export default function ClinicalTrialMap({ patientConditions = [] }) {
                 </div>
               ))}
 
-              {/* ── Pagination ── */}
               {filteredTrials.length > PAGE_SIZE && (() => {
                 const totalPages = Math.ceil(filteredTrials.length / PAGE_SIZE);
                 const goTo = p => {
                   setCurrentPage(p);
                   listTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
                 };
-
-                // Build page number array with ellipsis: 1 2 3 … 12 13 14
                 const pages = [];
                 const delta = 2;
                 const left  = currentPage - delta;
@@ -747,43 +763,20 @@ export default function ClinicalTrialMap({ patientConditions = [] }) {
                     last = p;
                   }
                 }
-
                 return (
                   <div className="ctmap-pagination">
-                    {/* Prev */}
-                    <button
-                      className="ctmap-page-btn ctmap-page-arrow"
-                      onClick={() => goTo(currentPage - 1)}
-                      disabled={currentPage === 1}
-                    >
-                      <svg viewBox="0 0 14 14" fill="none" width="12">
-                        <path d="M9 11L5 7l4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
+                    <button className="ctmap-page-btn ctmap-page-arrow" onClick={() => goTo(currentPage - 1)} disabled={currentPage === 1}>
+                      <svg viewBox="0 0 14 14" fill="none" width="12"><path d="M9 11L5 7l4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
                     </button>
-
                     {pages.map((p, i) =>
                       p === "…" ? (
                         <span key={`ellipsis-${i}`} className="ctmap-page-ellipsis">…</span>
                       ) : (
-                        <button
-                          key={p}
-                          className={`ctmap-page-btn ${currentPage === p ? "ctmap-page-btn--active" : ""}`}
-                          onClick={() => goTo(p)}
-                        >
-                          {p}
-                        </button>
+                        <button key={p} className={`ctmap-page-btn ${currentPage === p ? "ctmap-page-btn--active" : ""}`} onClick={() => goTo(p)}>{p}</button>
                       )
                     )}
-
-                    {/* Next */}
-                    <button
-                      className="ctmap-page-btn ctmap-page-arrow"
-                      onClick={() => goTo(currentPage + 1)}
-                      disabled={currentPage === totalPages}
-                    >
-                      <svg viewBox="0 0 14 14" fill="none" width="12">
-                        <path d="M5 3l4 4-4 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
+                    <button className="ctmap-page-btn ctmap-page-arrow" onClick={() => goTo(currentPage + 1)} disabled={currentPage === totalPages}>
+                      <svg viewBox="0 0 14 14" fill="none" width="12"><path d="M5 3l4 4-4 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
                     </button>
                   </div>
                 );
@@ -791,7 +784,6 @@ export default function ClinicalTrialMap({ patientConditions = [] }) {
             </>
           )}
         </div>
-
       </div>
     </>
   );

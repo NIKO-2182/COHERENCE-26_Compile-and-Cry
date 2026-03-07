@@ -8,7 +8,7 @@ Automatically loads:
 
 Runs parsing pipeline and saves structured output to OUTPUT_PATH.
 """
-
+import os
 import re
 import json
 import logging
@@ -28,14 +28,19 @@ except ImportError:
 # ★  FILE PATHS  ★  — update these if files move
 # ============================================================================
 
-PATIENT_REPORT_PATH: Path = Path(
-    r"D:\C&C\COHERENCE-26_Compile-and-Cry\backend\Mod1\Data_Extractor"
-    r"\extracted_results\niharreport_20260307_032622.json"
+PATIENT_REPORT_PATH = Path(
+    os.environ.get(
+        "MOD2_PATIENT_REPORT_PATH",
+        r"D:\C&C\COHERENCE-26_Compile-and-Cry\backend\Mod1\Data_Extractor\extracted_results\niharreport_20260307_032622.json"
+    )
 )
 
 CLINICAL_TRIALS_PATH: Path = Path(
-    r"D:\C&C\COHERENCE-26_Compile-and-Cry\backend\Mod1\trial_fetcher"
-    r"\clinical_trials_diabetes.json"
+    os.environ.get(
+        "MOD2_CLINICAL_TRIALS_PATH",
+        r"D:\C&C\COHERENCE-26_Compile-and-Cry\backend\Mod1\trial_fetcher"
+        r"\clinical_trials_diabetes.json"
+    )
 )
 
 # Where Mod2 writes its output (sits next to this script by default)

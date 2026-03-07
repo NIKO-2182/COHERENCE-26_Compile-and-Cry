@@ -15,7 +15,7 @@ import { transformSummary, transformTrials, transformEligible } from "../utils/t
 
 const TrialDataContext = createContext(null);
 
-export const BASE_URL = "http://192.168.137.226:8080";
+export const BASE_URL = "http://192.168.137.226:8000";
 
 /* ─── localStorage helpers ────────────────────────────────────
    Key   : "nex_trial_dashboard_data"

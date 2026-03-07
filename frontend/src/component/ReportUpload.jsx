@@ -202,8 +202,8 @@ export default function ReportUpload({ onNavigate }) {
   const [progress, setProgress]     = useState(0);
   const inputRef = useRef(null);
 
-const FASTAPI_URL = "http://192.168.137.226:8080/upload-report"; // ← set your IP here
-const BASE_URL    = "http://192.168.137.226:8080";
+const FASTAPI_URL = "http://192.168.137.226:8000/upload-report"; // ← set your IP here
+const BASE_URL    = "http://192.168.137.226:8000";
 const { fetchDashboardData, trialData } = useTrialData();
 const metrics = trialData?.metricsData ?? { conditions: 0, labValues: 0, trialsMatched: 0 };
 const runExtraction = async (f) => {
@@ -395,7 +395,7 @@ await fetchDashboardData();
                 <span className="rhl-pip rhl-pip--violet"/><div className="rhl-body"><span className="rhl-head">AI eligibility engine</span><span className="rhl-sub">XGBoost + SHAP transparency</span></div>
               </div>
               <div className="rhl rhl--mid">
-                <span className="rhl-pip rhl-pip--teal"/><div className="rhl-body"><span className="rhl-head">BioBERT NER</span><span className="rhl-sub">Medical entity extraction</span></div>
+                <span className="rhl-pip rhl-pip--teal"/><div className="rhl-body"><span className="rhl-head">GLiner-BioNER</span><span className="rhl-sub">Medical entity extraction</span></div>
               </div>
             </div>
           )}

@@ -82,7 +82,8 @@ export function transformSummary(json) {
  *               explanation_cards, match_breakdown, recommendation }, ... ] }
  */
 export function transformTrials(json) {
-  const trials = json.trials ?? json ?? [];  // backend may return array or { trials: [] }
+  const raw = json.trials ?? json;
+const trials = Array.isArray(raw) ? raw : Object.values(raw ?? {}); // backend may return array or { trials: [] }
 
   const trialsData = trials.slice(0, 6).map((t) => ({
     id:         t.rank,

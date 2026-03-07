@@ -193,7 +193,7 @@ const DURATIONS = [700, 950, 850, 650, 600, 1050, 750, 500];
 
 
 /* ─── Main ───────────────────────────────────────────── */
-export default function ReportUpload() {
+export default function ReportUpload({ onNavigate }) {
   const [phase, setPhase]           = useState("idle");
   const [file, setFile]             = useState(null);
   const [dragging, setDragging]     = useState(false);
@@ -202,7 +202,8 @@ export default function ReportUpload() {
   const [progress, setProgress]     = useState(0);
   const inputRef = useRef(null);
 
-const FASTAPI_URL = "http://192.168.137.226:8000/upload-report"; // ← set your IP here
+const FASTAPI_URL = "http://192.168.137.226:8080/upload-report"; // ← set your IP here
+const BASE_URL    = "http://192.168.137.226:8080";
 const { fetchDashboardData, trialData } = useTrialData();
 const metrics = trialData?.metricsData ?? { conditions: 0, labValues: 0, trialsMatched: 0 };
 const runExtraction = async (f) => {
@@ -278,7 +279,7 @@ await fetchDashboardData();
               </h1>
 
               <p className="ru-body">
-                Our AI engine reads your medical report, extracts clinical data — diagnoses, lab values, medications — and matches patients to active clinical trials nearby with full transparency.
+                Our AI engine reads your medical report, extracts clinical data diagnoses, lab values, medications and matches patients to active clinical trials nearby with full transparency.
               </p>
 
               <div className="ru-badges">
@@ -372,8 +373,8 @@ await fetchDashboardData();
                   <div key={l} className="ru-metric"><span className="ru-metric-n">{n}</span><span className="ru-metric-l">{l}</span></div>
                 ))}
               </div>
-              <button className="ru-goto">
-                <span>🏥</span><span>Go to Find Clinic</span>
+              <button className="ru-goto" onClick={() => onNavigate("dashboard")}>
+                <span>🏥</span><span>Get Detail Report</span>
                 <svg viewBox="0 0 14 14" fill="currentColor" width="12" className="ru-arr"><path d="M7.293 1.293a1 1 0 011.414 0l5 5a1 1 0 010 1.414l-5 5a1 1 0 01-1.414-1.414L10.586 8H1a1 1 0 110-2h9.586L7.293 2.707a1 1 0 010-1.414z"/></svg>
               </button>
               <button className="ru-again" onClick={reset}>↺ Upload another report</button>
